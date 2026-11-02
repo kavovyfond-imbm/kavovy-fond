@@ -157,7 +157,7 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.3';
+var APP_VERZIA = '3.4';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
 var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
@@ -307,11 +307,22 @@ function monthKey(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1))
 function shiftMonth(k, n) { var d = new Date(+k.slice(0, 4), +k.slice(5, 7) - 1 + n, 1); return monthKey(d); }
 
 // ---------- start ----------
+/** Osobný kľúč dá do adresy stránky (?t=…), aby „Pridať na plochu“ uložilo osobný odkaz.
+ *  (Ikona na ploche iPhonu má vlastnú pamäť oddelenú od Safari – bez kľúča v adrese by sa člen musel prihlasovať znova.) */
+function osobnaAdresa(token) {
+  try {
+    if (!token || /googleusercontent|script\.google/.test(location.hostname)) return;
+    var q = new URLSearchParams(location.search);
+    if (q.get('t') === token) return;
+    history.replaceState(null, '', location.pathname + '?t=' + encodeURIComponent(token));
+  } catch (e) {}
+}
 (function start() {
   if (INIT.admin) { S.pin = sload('kf_pin'); return S.pin ? adminLoad() : adminLogin(); }
   S.token = INIT.token || load('kf_token') || '';
   if (INIT.token) store('kf_token', INIT.token);
   if (!S.token) return registerView();
+  osobnaAdresa(S.token);
   memberLoad();
 })();
 
@@ -339,7 +350,7 @@ function doRegister() {
       render(header('') + '<div class="card hero"><div class="art">' + art('ok') + '</div><h2>Skontroluj si e-mail</h2>' +
         '<p class="tip">' + (r.znovu ? 'Vitaj späť vo fonde! ' : '') + 'Na <b>' + esc(r.email) + '</b> sme poslali tvoj osobný odkaz do aplikácie. Otvor ho v mobile a pridaj si ho na plochu.</p></div>');
     } else {
-      store('kf_token', r.token); S.token = r.token;
+      store('kf_token', r.token); S.token = r.token; osobnaAdresa(r.token);
       memberLoad('<div class="msg ok">Vitaj vo fonde! Odkaz na túto stránku ti prišiel aj e-mailom. Pridaj si ju na plochu, nech ju máš po ruke.</div>');
     }
   }).catch(function (e) { registerView(errBox(e)); });
@@ -419,7 +430,7 @@ function memberView(msg) {
       return '<li><span class="grow">' + esc(n.polozka) + '<div class="sub">' + esc(n.datum) + '</div></span><span class="num">' + eur(n.suma) + '</span>' + st + '</li>';
     }).join('') + '</ul>' : '') +
     '</div>';
-  h += '<div class="card tip"><b style="color:var(--fg)">Pridaj si túto stránku na plochu.</b> iPhone: Safari → Zdieľať → Pridať na plochu. Android: Chrome → ⋮ → Pridať na plochu.<br>' +
+  h += '<div class="card tip"><b style="color:var(--fg)">Pridaj si túto stránku na plochu</b> – priamo odtiaľto, adresa obsahuje tvoj osobný kľúč. iPhone: Safari → Zdieľať → Pridať na plochu. Android: Chrome → ⋮ → Pridať na plochu.<br>' +
     'Táto adresa je tvoj osobný prístup – nikomu ju neposielaj.<br>' +
     'Otázky: <a href="mailto:' + esc(c.spravcaEmail) + '" style="color:var(--brand)">' + esc(c.spravca) + '</a></div>';
   if (c.aktivny) h += '<div class="center"><button class="link" style="color:var(--muted)" onclick="askUnsubscribe()">Odhlásiť sa z kávového fondu</button></div>';
@@ -682,6 +693,7 @@ function adminView(d, msg) {
   h += '<div class="card stack"><h2>Odkazy</h2>' +
     '<div class="kv"><span class="k">Prihlásenie</span><span class="v">' + esc(d.appUrl) + '</span><button class="copy" onclick="copyText(S.admin.appUrl,this)">Kopírovať</button></div>' +
     '<div class="tip">Tento odkaz môžete poslať aj do skupiny – každý sa prihlási sám.</div>' +
+    '<div class="kv"><span class="k">Maily odchádzajú z</span><span class="v">' + esc(d.ucet || '?') + '</span><button class="copy" onclick="testMail(this)">Skúšobný mail</button></div>' +
     '<a class="btn ghost block" href="' + esc(d.tabulka) + '" target="_blank">Otvoriť Google tabuľku</a>' +
     '<button class="link" onclick="sstore(\'kf_pin\',null);location.reload()">Odhlásiť sa z panela</button></div></div>' +
     '<footer>Verzia aplikácie ' + APP_VERZIA + '</footer>';
@@ -726,6 +738,13 @@ function mailModal(title, info, m) {
     '<div class="stack"><a class="btn block" href="' + esc(href) + '" target="_blank">Otvoriť v mailovom programe</a>' +
     '<button class="ghost block" onclick="copyText(S.mail.text,this)">Kopírovať text</button>' +
     '<button class="link" style="width:100%" onclick="modal(\'\')">Zavrieť</button></div>');
+}
+function testMail(b) {
+  b.disabled = true; b.textContent = 'Posielam…';
+  api('apiAdminTestMail', S.pin).then(function (r) {
+    b.disabled = false; b.textContent = 'Skúšobný mail';
+    modal('<h2>Mail odoslaný ✓</h2><p class="tip">' + esc(r) + '</p><button class="block" onclick="modal(\'\')">OK</button>');
+  }).catch(function (e) { b.disabled = false; b.textContent = 'Skúšobný mail'; alertBox(e); });
 }
 function setCoffee(b) {
   b.disabled = true; b.textContent = 'Načítavam…';
