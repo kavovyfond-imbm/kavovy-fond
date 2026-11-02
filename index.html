@@ -157,7 +157,7 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.6';
+var APP_VERZIA = '3.8';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
 var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
@@ -236,9 +236,9 @@ function art(v) {
     '</g>';
   return '<svg viewBox="' + W.join(' ') + '" role="img" aria-label="">' + defs + g + '</svg>';
 }
-function header(t, sub, small) {
+function header(t, sub, extra) {
   return '<div class="topbar"><div class="brand">' + mark() + '<span>kávový fond</span></div>' +
-    (sub ? '<div class="who">' + esc(sub) + '</div>' : '') + '</div>' +
+    (sub || extra ? '<div class="who">' + esc(sub || '') + (extra || '') + '</div>' : '') + '</div>' +
     (t ? '<h1>' + esc(t) + '</h1>' : '');
 }
 function stars(v) {
@@ -319,8 +319,11 @@ function osobnaAdresa(token) {
 }
 (function start() {
   if (INIT.admin) { S.pin = sload('kf_pin'); return S.pin ? adminLoad() : adminLogin(); }
-  S.token = INIT.token || load('kf_token') || '';
-  if (INIT.token) store('kf_token', INIT.token);
+  var odhlasene = load('kf_odhlasene') || [];
+  // odkaz z ikony na ploche s kľúčom, z ktorého sa člen na tomto zariadení odhlásil → neprihlasovať automaticky
+  var tokenZAdresy = INIT.token && odhlasene.indexOf(INIT.token) < 0 ? INIT.token : '';
+  S.token = tokenZAdresy || load('kf_token') || '';
+  if (tokenZAdresy) store('kf_token', tokenZAdresy);
   if (!S.token) return registerView();
   osobnaAdresa(S.token);
   memberLoad();
@@ -347,6 +350,7 @@ function doRegister() {
   var b = $('r-btn'); b.disabled = true; b.textContent = 'Moment…';
   api('apiRegistrovat', $('r-meno').value, $('r-email').value).then(function (r) {
     store('kf_token', r.token); S.token = r.token; osobnaAdresa(r.token);
+    store('kf_odhlasene', (load('kf_odhlasene') || []).filter(function (x) { return x !== r.token; }));
     memberLoad(r.existujuci ? (r.znovu ? '<div class="msg ok">Vitaj späť vo fonde!</div>' : '')
       : '<div class="msg ok">Vitaj vo fonde! Pridaj si túto stránku na plochu, nech ju máš po ruke.</div>');
   }).catch(function (e) { registerView(errBox(e)); });
@@ -366,9 +370,9 @@ function memberLoad(msg) {
 
 function memberView(msg) {
   var c = S.clen;
-  var h = header('Ahoj, ' + c.krstne, c.meno) + (msg || '');
+  var h = header('Ahoj, ' + c.krstne, c.meno, '<br><button class="link" style="font-size:13px;padding:2px 0" onclick="askLogout()">Odhlásiť sa z účtu</button>') + (msg || '');
   var nove = c.spravy.filter(function (m) { return m.od === 'spravca' && !m.precitane; }).length;
-  if (nove) h += '<a href="#spravy" class="band" style="text-decoration:none"><span class="dot">' + nove + '</span><b>Správca ti odpísal</b><span style="margin-left:auto">Zobraziť →</span></a>';
+  if (nove) h += '<a href="#spravy" class="band" style="text-decoration:none"><span class="dot">' + nove + '</span><b>Máš novú správu od správcu</b><span style="margin-left:auto">Zobraziť →</span></a>';
   if (!c.aktivny) {
     h += '<div class="card hero"><span class="pill mut">Odhlásený(á) z fondu</span>' +
       '<p class="tip" style="margin:14px 0 18px">Nové platby ti už nechodia. ' + (c.dlh > 0 ? 'Ešte prosím doplať nižšie uvedenú sumu.' : '') + '</p>' +
@@ -450,6 +454,25 @@ function sendMsg() {
     S.clen = c; memberView('<div class="msg ok">Správa odišla správcovi.</div>');
     setTimeout(function () { var e = $('spravy'); if (e) e.scrollIntoView(); }, 50);
   }).catch(function (e) { b.disabled = false; b.textContent = 'Odoslať správu'; alertBox(e); });
+}
+// --- odhlásenie z účtu na tomto zariadení (členstvo vo fonde ostáva) ---
+function askLogout() {
+  modal('<h2>Odhlásiť sa z účtu?</h2>' +
+    '<p class="tip">Odhlásiš sa len z aplikácie na tomto zariadení. <b>Ostávaš členom kávového fondu</b> – platby, kredit aj história zostávajú. ' +
+    'Znova sa prihlásiš svojím menom a e-mailom.</p>' +
+    '<p class="tip">Ak chceš z fondu odísť úplne, použi dole na stránke <i>Odhlásiť sa z kávového fondu</i>.</p>' +
+    '<div class="stack"><button class="block" onclick="logoutDevice()">Odhlásiť sa z účtu</button>' +
+    '<button class="ghost block" onclick="modal(\'\')">Zrušiť</button></div>');
+}
+function logoutDevice() {
+  var t = S.token;
+  var odh = load('kf_odhlasene') || [];
+  if (t && odh.indexOf(t) < 0) odh.push(t);
+  store('kf_odhlasene', odh.slice(-10));
+  store('kf_token', null); store('kf_pending', null);
+  S.token = ''; S.clen = null; modal('');
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  registerView('<div class="msg ok">Si odhlásený(á) z účtu. Členom fondu zostávaš.</div>');
 }
 function toggleBank() { $('bank').classList.toggle('hidden'); }
 
@@ -597,7 +620,8 @@ function adminView(d, msg) {
 
   // --- Správy ---
   var neprec = d.vlakna.reduce(function (a, v) { return a + v.neprecitane; }, 0);
-  h += '<div class="card"><h2>Správy od členov ' + (neprec ? '<span class="dot">' + neprec + '</span>' : '') + '</h2>' +
+  h += '<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:12px"><h2 style="margin:0">Správy od členov ' + (neprec ? '<span class="dot">' + neprec + '</span>' : '') + '</h2>' +
+    '<button class="small" onclick="bulkForm()">Napísať viacerým</button></div>' +
     (d.vlakna.length ? '<ul class="list">' + d.vlakna.map(function (v, i) {
       return '<li class="thread" onclick="openThread(S.admin.vlakna[' + i + '].meno)"><span class="grow"><b style="color:var(--fg)">' + esc(v.meno) + '</b>' +
         '<div class="sub" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v.posledna) + '</div></span>' +
@@ -756,6 +780,45 @@ function invite(b) {
     b.disabled = false;
     copyText(r.predmet + '\n\n' + r.text, b);
   }).catch(function (e) { b.disabled = false; alertBox(e); });
+}
+// --- hromadná správa ---
+function bulkForm(preset) {
+  var cl = S.admin.clenovia;
+  S.bulk = S.bulk || {};
+  if (preset === 'all') cl.forEach(function (c) { S.bulk[c.meno] = c.aktivny; });
+  else if (preset === 'debt') cl.forEach(function (c) { S.bulk[c.meno] = c.zostatok < -0.004; });
+  else if (preset === 'none') S.bulk = {};
+  else if (!Object.keys(S.bulk).length) cl.forEach(function (c) { S.bulk[c.meno] = c.aktivny; });
+  var draft = $('b-text') ? $('b-text').value : (S.bulkText || '');
+  var n = cl.filter(function (c) { return S.bulk[c.meno]; }).length;
+  modal('<h2>Správa viacerým členom</h2>' +
+    '<div class="row wrap-r" style="margin-bottom:10px"><button class="small ghost" onclick="bulkForm(\'all\')">Všetci prihlásení</button>' +
+    '<button class="small ghost" onclick="bulkForm(\'debt\')">Dlžníci</button><button class="small ghost" onclick="bulkForm(\'none\')">Nikto</button></div>' +
+    '<div style="max-height:240px;overflow-y:auto;border:1.5px solid var(--line);border-radius:14px;padding:4px 12px;margin-bottom:12px">' +
+    cl.map(function (c, i) {
+      return '<label style="display:flex;gap:10px;align-items:center;padding:8px 0;margin:0;font-weight:500;color:var(--fg);border-bottom:1px solid var(--line)">' +
+        '<input type="checkbox" style="width:auto" ' + (S.bulk[c.meno] ? 'checked ' : '') + 'onchange="S.bulk[S.admin.clenovia[' + i + '].meno]=this.checked;bulkCount()">' +
+        '<span class="grow">' + esc(c.meno) + (c.aktivny ? '' : ' <span class="sub">(odhlásený)</span>') + '</span>' +
+        (c.zostatok < -0.004 ? '<span class="pill bad">' + eur(c.zostatok) + '</span>' : '') + '</label>';
+    }).join('') + '</div>' +
+    '<textarea id="b-text" rows="4" placeholder="Text správy…" oninput="S.bulkText=this.value">' + esc(draft) + '</textarea>' +
+    '<div class="stack" style="margin-top:10px"><button class="block" id="b-btn" onclick="sendBulk()">Odoslať (' + n + ')</button>' +
+    '<button class="link" style="width:100%" onclick="modal(\'\')">Zrušiť</button></div>');
+}
+function bulkCount() {
+  var n = S.admin.clenovia.filter(function (c) { return S.bulk[c.meno]; }).length;
+  $('b-btn').textContent = 'Odoslať (' + n + ')';
+}
+function sendBulk() {
+  var mena = S.admin.clenovia.filter(function (c) { return S.bulk[c.meno]; }).map(function (c) { return c.meno; });
+  var t = $('b-text').value;
+  if (!mena.length) return alertBox(new Error('Vyberte aspoň jedného príjemcu.'));
+  if (!t.trim()) return;
+  var b = $('b-btn'); b.disabled = true; b.textContent = 'Posielam…';
+  api('apiAdminHromadnaSprava', S.pin, mena, t, S.mesiac).then(function (r) {
+    S.bulk = {}; S.bulkText = ''; modal('');
+    adminView(r.data, '<div class="msg ok">Správa odoslaná ' + r.pocet + ' členom. Uvidia ju vo svojej aplikácii.</div>');
+  }).catch(function (e) { b.disabled = false; bulkCount(); alertBox(e); });
 }
 function openThread(meno) {
   S.vlakno = meno;
