@@ -157,7 +157,7 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.4';
+var APP_VERZIA = '3.5';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
 var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
@@ -340,7 +340,7 @@ function registerView(msg) {
     '<div><label for="r-meno">Meno a priezvisko</label><input id="r-meno" autocomplete="name" placeholder="Jana Nováková"></div>' +
     '<div><label for="r-email">E-mail</label><input id="r-email" type="email" autocomplete="email" inputmode="email" placeholder="jana@gmail.com"></div>' +
     '<button class="block" id="r-btn" onclick="doRegister()">Prihlásiť sa do fondu</button>' +
-    '<p class="tip center" style="margin:6px 0 0">Stratil(a) si svoj odkaz? Zadaj e-mail, s ktorým si sa prihlásil(a) – pošleme ti ho znova.</p>' +
+    '<p class="tip center" style="margin:6px 0 0">Už si vo fonde (napr. na inom zariadení)? Zadaj meno a e-mail, s ktorým si sa prihlásil(a).</p>' +
     '</div>');
 }
 function doRegister() {
@@ -351,7 +351,8 @@ function doRegister() {
         '<p class="tip">' + (r.znovu ? 'Vitaj späť vo fonde! ' : '') + 'Na <b>' + esc(r.email) + '</b> sme poslali tvoj osobný odkaz do aplikácie. Otvor ho v mobile a pridaj si ho na plochu.</p></div>');
     } else {
       store('kf_token', r.token); S.token = r.token; osobnaAdresa(r.token);
-      memberLoad('<div class="msg ok">Vitaj vo fonde! Odkaz na túto stránku ti prišiel aj e-mailom. Pridaj si ju na plochu, nech ju máš po ruke.</div>');
+      memberLoad(r.existujuci ? (r.znovu ? '<div class="msg ok">Vitaj späť vo fonde!</div>' : '')
+        : '<div class="msg ok">Vitaj vo fonde! Pridaj si túto stránku na plochu, nech ju máš po ruke.</div>');
     }
   }).catch(function (e) { registerView(errBox(e)); });
 }
