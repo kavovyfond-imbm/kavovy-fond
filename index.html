@@ -157,7 +157,7 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.8';
+var APP_VERZIA = '3.9';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
 var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
@@ -607,7 +607,9 @@ function adminView(d, msg) {
     '<div class="kv"><span class="k">Návrh / osoba</span><span class="v">' + eur(d.navrh.podiel) + '</span></div>' +
     '<div><label for="z-s">Suma na osobu €</label><input id="z-s" inputmode="decimal" value="' + (d.zverejnene ? d.zverejnene.suma : d.navrh.podiel).toFixed(2) + '"></div>' +
     '<button class="block" id="z-btn" onclick="publish()">' + (d.zverejnene ? 'Zverejniť znova (prepíše sumu)' : 'Zverejniť platbu za ' + esc(d.nazovMesiaca)) + '</button>' +
-    '<div class="tip">Členom sa v aplikácii hneď objaví platobný príkaz. Opätovné zverejnenie len prepíše sumu, nič sa nezdvojí.</div></div></div>';
+    (d.zverejnene ? '<button class="ghost block" id="zz-btn" onclick="unpublish(this)">Zrušiť zverejnenie</button>' : '') +
+    '<div class="tip">Členom sa v aplikácii hneď objaví platobný príkaz. Opätovné zverejnenie len prepíše sumu, nič sa nezdvojí.' +
+    (d.zverejnene ? ' Zrušenie zverejnenia platbu členom odstráni; kto už zaplatil, tomu sa suma ponechá ako kredit.' : '') + '</div></div></div>';
 
   // --- Na schválenie ---
   if (d.naSchvalenie.length) {
@@ -646,7 +648,7 @@ function adminView(d, msg) {
   // --- Platby ---
   h += '<div class="card"><h2>Posledné platby</h2><ul class="list">' + (d.platby.length ? d.platby.map(function (p, i) {
     return '<li><span class="grow"><b>' + esc(p.clen) + '</b> ' + (p.aplikacia ? '<span class="pill mut">aplikácia</span>' : '') + '<div class="sub">' + esc(p.datum) + (p.aplikacia ? '' : ' · ' + esc(p.poznamka)) + '</div></span>' +
-      '<span class="num">' + eur(p.suma) + '</span>' + (p.id ? '<button class="small ghost" onclick="cancelPay(' + i + ', this)">Zrušiť</button>' : '') + '</li>';
+      '<span class="num">' + eur(p.suma) + '</span>' + (p.id ? '<button class="small ghost" onclick="editPay(' + i + ')">Upraviť</button> <button class="small ghost" onclick="cancelPay(' + i + ', this)">Zrušiť</button>' : '') + '</li>';
   }).join('') : '<li class="muted">Zatiaľ žiadne.</li>') + '</ul></div>';
 
   // --- Odkazy ---
@@ -850,6 +852,27 @@ function delCost(i, b) {
   if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Zmazať?'; b.className = 'small danger'; return; }
   b.disabled = true;
   adminCall('apiAdminZmazatNaklad', n.riadok, n.polozka, S.mesiac);
+}
+function unpublish(b) {
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.className = 'block danger'; b.textContent = 'Naozaj zrušiť zverejnenie za ' + S.admin.nazovMesiaca + '? Klikni znova'; return; }
+  b.disabled = true; b.textContent = 'Ruším…';
+  api('apiAdminZrusitZverejnenie', S.pin, S.mesiac).then(function (d) {
+    adminView(d, '<div class="msg ok">Zverejnenie za ' + esc(d.nazovMesiaca) + ' je zrušené. Členom sa platba už nezobrazuje.</div>');
+  }).catch(function (e) { b.disabled = false; alertBox(e); });
+}
+function editPay(i) {
+  var p = S.admin.platby[i];
+  modal('<h2>Upraviť platbu – ' + esc(p.clen) + '</h2><div class="stack">' +
+    '<div><label for="e-s">Suma € (záporná = vrátenie peňazí)</label><input id="e-s" inputmode="decimal" value="' + p.suma.toFixed(2) + '"></div>' +
+    '<div><label for="e-p">Poznámka</label><input id="e-p" value="' + esc(p.poznamka) + '"></div>' +
+    '<button class="block" id="e-btn" onclick="savePay(' + i + ')">Uložiť</button>' +
+    '<button class="ghost block" onclick="modal(\'\')">Zrušiť</button></div>');
+}
+function savePay(i) {
+  var b = $('e-btn'); b.disabled = true; b.textContent = 'Ukladám…';
+  api('apiAdminUpravitPlatbu', S.pin, S.admin.platby[i].id, $('e-s').value, $('e-p').value, S.mesiac).then(function (d) {
+    modal(''); adminView(d, '<div class="msg ok">Platba upravená.</div>');
+  }).catch(function (e) { b.disabled = false; b.textContent = 'Uložiť'; alertBox(e); });
 }
 function cancelPay(i, b) {
   if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Naozaj?'; b.className = 'small danger'; return; }
