@@ -157,7 +157,7 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.5';
+var APP_VERZIA = '3.6';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
 var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
@@ -346,14 +346,9 @@ function registerView(msg) {
 function doRegister() {
   var b = $('r-btn'); b.disabled = true; b.textContent = 'Moment…';
   api('apiRegistrovat', $('r-meno').value, $('r-email').value).then(function (r) {
-    if (r.poslane) {
-      render(header('') + '<div class="card hero"><div class="art">' + art('ok') + '</div><h2>Skontroluj si e-mail</h2>' +
-        '<p class="tip">' + (r.znovu ? 'Vitaj späť vo fonde! ' : '') + 'Na <b>' + esc(r.email) + '</b> sme poslali tvoj osobný odkaz do aplikácie. Otvor ho v mobile a pridaj si ho na plochu.</p></div>');
-    } else {
-      store('kf_token', r.token); S.token = r.token; osobnaAdresa(r.token);
-      memberLoad(r.existujuci ? (r.znovu ? '<div class="msg ok">Vitaj späť vo fonde!</div>' : '')
-        : '<div class="msg ok">Vitaj vo fonde! Pridaj si túto stránku na plochu, nech ju máš po ruke.</div>');
-    }
+    store('kf_token', r.token); S.token = r.token; osobnaAdresa(r.token);
+    memberLoad(r.existujuci ? (r.znovu ? '<div class="msg ok">Vitaj späť vo fonde!</div>' : '')
+      : '<div class="msg ok">Vitaj vo fonde! Pridaj si túto stránku na plochu, nech ju máš po ruke.</div>');
   }).catch(function (e) { registerView(errBox(e)); });
 }
 
@@ -363,7 +358,7 @@ function doRegister() {
 function memberLoad(msg) {
   spinner();
   api('apiClen', S.token).then(function (c) {
-    if (c.neznamy) { store('kf_token', null); return registerView('<div class="msg info">Tento odkaz už neplatí. Zadaj svoj e-mail a pošleme ti nový.</div>'); }
+    if (c.neznamy) { store('kf_token', null); return registerView('<div class="msg info">Tento odkaz už neplatí. Prihlás sa svojím menom a e-mailom.</div>'); }
     S.clen = c; memberView(msg);
     checkPending();
   }).catch(function (e) { render(header('') + errBox(e) + '<button class="ghost block" onclick="memberLoad()">Skúsiť znova</button>'); });
@@ -416,7 +411,7 @@ function memberView(msg) {
   }
   // správy
   h += '<div class="card" id="spravy"><h2>Napísať správcovi</h2>' +
-    '<p class="tip" style="margin:0 0 12px">Niečo nesedí s platbou, chceš navrhnúť inú kávu alebo sa niečo opýtať? Napíš – odpoveď uvidíš tu a príde ti aj mailom.</p>' +
+    '<p class="tip" style="margin:0 0 12px">Niečo nesedí s platbou, chceš navrhnúť inú kávu alebo sa niečo opýtať? Napíš – odpoveď uvidíš tu.</p>' +
     bubbles(c.spravy, 'clen') +
     '<textarea id="m-text" rows="3" placeholder="Tvoja správa…"></textarea>' +
     '<button class="block" id="m-btn" style="margin-top:10px" onclick="sendMsg()">Odoslať správu</button></div>';
@@ -464,7 +459,7 @@ function askUnsubscribe() {
   modal('<h2>Odhlásiť sa z kávového fondu?</h2>' +
     '<p class="tip">Od ďalšieho mesiaca ti už nebudú chodiť platby. Kedykoľvek sa môžeš prihlásiť späť tu v aplikácii.</p>' +
     (c.dlh > 0 ? '<div class="msg info">Ešte máš nezaplatené ' + eur(c.dlh) + ' – tie prosím doplať aj po odhlásení.</div>' : '') +
-    (c.zostatok > 0.004 ? '<div class="msg info">Máš kredit ' + eur(c.zostatok) + '. Správcovi dáme vedieť, aby ti ho vrátil.</div>' : '') +
+    (c.zostatok > 0.004 ? '<div class="msg info">Máš kredit ' + eur(c.zostatok) + '. Napíš správcovi (časť Napísať správcovi), aby ti ho vrátil.</div>' : '') +
     '<div class="stack"><button class="block danger" id="u-yes" onclick="unsubscribe()">Áno, odhlásiť ma</button>' +
     '<button class="ghost block" onclick="modal(\'\')">Zostávam</button><div id="u-err"></div></div>');
 }
@@ -555,6 +550,7 @@ function adminView(d, msg) {
     '<button class="ghost small" onclick="adminLoad(shiftMonth(S.mesiac,1))">›</button></div>' +
     (d.zverejnene ? '<div><span class="pill ok">Zverejnené ' + eur(d.zverejnene.suma) + '</span> <span class="sub">zaplatilo ' + zaplatili + ' / ' + d.zverejnene.pocet + '</span></div>'
       : '<span class="pill mut">Platba ešte nezverejnená</span>') +
+    (d.pripomenutZverejnit ? '<div class="msg info" style="width:100%;margin:4px 0 0"><b>Je čas zverejniť platbu za ' + esc(d.nazovMesiaca) + '.</b> Skontrolujte náklady a kliknite nižšie Zverejniť platbu.</div>' : '') +
     (d.kava && /plán/.test(d.kava.stav) ? '<div class="msg info" style="width:100%;margin:4px 0 0">Káva na ' + esc(d.nazovMesiaca) + ' je zatiaľ len plánovaná. ' +
       (d.eshop ? '<a href="' + esc(d.eshop) + '" target="_blank" rel="noopener" style="color:inherit;font-weight:600">Objednať na e-shope →</a> ' : '') + 'Po zaplatení ju nižšie označte ✓.</div>' : '') +
     '<div class="sub" style="width:100%">Peniaze fondu u správcu: <b style="color:var(--fg)">' + eur(d.pokladna.stav) + '</b>' +
@@ -587,7 +583,6 @@ function adminView(d, msg) {
     '<div class="kv"><span class="k">Prihlásení</span><span class="v">' + d.navrh.pocet + '</span></div>' +
     '<div class="kv"><span class="k">Návrh / osoba</span><span class="v">' + eur(d.navrh.podiel) + '</span></div>' +
     '<div><label for="z-s">Suma na osobu €</label><input id="z-s" inputmode="decimal" value="' + (d.zverejnene ? d.zverejnene.suma : d.navrh.podiel).toFixed(2) + '"></div>' +
-    '<label style="display:flex;gap:8px;align-items:center;font-weight:500;color:var(--fg)"><input type="checkbox" id="z-n" checked style="width:auto"> Poslať každému členovi e-mail s odkazom na platbu</label>' +
     '<button class="block" id="z-btn" onclick="publish()">' + (d.zverejnene ? 'Zverejniť znova (prepíše sumu)' : 'Zverejniť platbu za ' + esc(d.nazovMesiaca)) + '</button>' +
     '<div class="tip">Členom sa v aplikácii hneď objaví platobný príkaz. Opätovné zverejnenie len prepíše sumu, nič sa nezdvojí.</div></div></div>';
 
@@ -620,7 +615,7 @@ function adminView(d, msg) {
         '<td class="sub">' + esc(c.posledna) + '</td>' +
         '<td style="white-space:nowrap"><button class="small ghost" onclick="manualPay(' + i + ')">+ platba</button> ' +
         '<button class="small ghost" title="Správa" onclick="openThread(S.admin.clenovia[' + i + '].meno)">Správa</button> ' +
-        '<button class="small ghost" title="Poslať osobný odkaz" onclick="adminCall(\'apiAdminPoslatOdkaz\',S.admin.clenovia[' + i + '].meno,S.mesiac)">✉</button> ' +
+        (c.odkaz ? '<button class="small ghost" title="Skopírovať osobný odkaz člena (ak ho stratil)" onclick="copyText(S.admin.clenovia[' + i + '].odkaz,this)">Odkaz</button> ' : '') +
         '<button class="small ghost" onclick="adminCall(\'apiAdminNastavStav\',S.admin.clenovia[' + i + '].meno,' + (!c.aktivny) + ',S.mesiac)">' + (c.aktivny ? 'Odhlásiť' : 'Prihlásiť') + '</button></td></tr>';
     }).join('') + (d.clenovia.length ? '' : '<tr><td colspan="5" class="muted">Zatiaľ sa nikto neprihlásil – pošlite pozvánku nižšie.</td></tr>') + '</table></div></div>';
 
@@ -670,9 +665,9 @@ function adminView(d, msg) {
     '2) Tu prepíšte meno, e-mail, IBAN, majiteľa účtu a podpis na jeho údaje. 3) Nastavte nový PIN a povedzte mu ho spolu s adresou panela. Hotovo – členom sa nový IBAN ukáže hneď.</div>' +
     '<div class="sgrid">' +
       '<h3>Správca a účet fondu</h3>' +
-      f('SPRAVCA_MENO', 'Meno správcu') + f('SPRAVCA_EMAIL', 'E-mail správcu (upozornenia, maily na odoslanie)') +
+      f('SPRAVCA_MENO', 'Meno správcu') + f('SPRAVCA_EMAIL', 'E-mail správcu (kontakt pre členov)') +
       f('IBAN', 'IBAN, na ktorý sa platí') + f('PRIJEMCA', 'Majiteľ účtu (bez diakritiky)') +
-      f('SPRAVCA_PODPIS', 'Podpis pod mailami', { area: true, wide: true }) +
+      f('SPRAVCA_PODPIS', 'Podpis pod pozvánkou a pripomienkou', { area: true, wide: true }) +
       '<div style="grid-column:1/-1"><label for="s-PIN">Nový PIN do panela (nechajte prázdne, ak ho nemeníte)</label><input id="s-PIN" type="password" autocomplete="new-password" inputmode="numeric"></div>' +
       '<h3>Káva a mlieko</h3>' +
       f('KAVA_KG', 'Káva – kg mesačne', { num: true }) + f('KAVA_CENA_KG', 'Cena za kg €', { num: true }) +
@@ -680,21 +675,19 @@ function adminView(d, msg) {
       f('MLIEKO_LITRE', 'Mlieko – litre mesačne', { num: true }) + f('MLIEKO_CENA_L', 'Cena mlieka za liter €', { num: true }) +
       f('MLIEKO_KDE', 'Kde sa objednáva mlieko', { wide: true, ph: 'napr. odkaz na e-shop' }) +
       '<h3>Kalendár (deň v mesiaci)</h3>' +
-      f('DEN_OBJEDNAVKY', 'Objednávka', { num: true }) + f('DEN_PRIPOMIENKY', 'Pripomienka dlžníkom (0 = vypnuté)', { num: true }) +
-      f('DEN_VYUCTOVANIA', 'Návrh platby', { num: true }) +
+      f('DEN_OBJEDNAVKY', 'Objednávka', { num: true }) +
+      f('DEN_VYUCTOVANIA', 'Pripomenúť zverejnenie platby od', { num: true }) +
     '</div>' +
     '<button class="block" id="s-btn" style="margin-top:16px" onclick="saveSettings()">Uložiť nastavenia</button>' +
-    '<p class="tip" style="margin:10px 0 0">Pri zmene IBAN, správcu alebo PIN príde upozornenie pôvodnému aj novému správcovi.</p>' +
     '</div></div>';
 
   h += '<div class="grid2"><div class="card stack"><h2>Pozvať do fondu</h2>' +
-    '<p class="tip" style="margin:0">Vložte e-maily (aj celý zoznam z Outlooku – oddelené čiarkou, bodkočiarkou alebo riadkami). Každému príde pozvánka s odkazom na prihlásenie. Kto je už prihlásený, toho preskočím.</p>' +
-    '<textarea id="p-em" rows="5" style="width:100%;font:15px Outfit,sans-serif;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--fg)" placeholder="meno@gmail.com, kolega@uniba.sk …"></textarea>' +
-    '<button class="block" id="p-btn" onclick="invite()">Poslať pozvánky</button></div>';
+    '<p class="tip" style="margin:0">Aplikácia neposiela žiadne maily. Skopírujte text pozvánky (aj s odkazom na prihlásenie) a pošlite ho sami – do mailing listu, skupiny alebo správou. Kto sa prihlási, objaví sa v zozname členov.</p>' +
+    '<button class="block" id="p-btn" onclick="invite(this)">Kopírovať text pozvánky</button>' +
+    '<button class="ghost block" onclick="copyText(S.admin.appUrl,this)">Kopírovať len odkaz na prihlásenie</button></div>';
   h += '<div class="card stack"><h2>Odkazy</h2>' +
     '<div class="kv"><span class="k">Prihlásenie</span><span class="v">' + esc(d.appUrl) + '</span><button class="copy" onclick="copyText(S.admin.appUrl,this)">Kopírovať</button></div>' +
     '<div class="tip">Tento odkaz môžete poslať aj do skupiny – každý sa prihlási sám.</div>' +
-    '<div class="kv"><span class="k">Maily odchádzajú z</span><span class="v">' + esc(d.ucet || '?') + '</span><button class="copy" onclick="testMail(this)">Skúšobný mail</button></div>' +
     '<a class="btn ghost block" href="' + esc(d.tabulka) + '" target="_blank">Otvoriť Google tabuľku</a>' +
     '<button class="link" onclick="sstore(\'kf_pin\',null);location.reload()">Odhlásiť sa z panela</button></div></div>' +
     '<footer>Verzia aplikácie ' + APP_VERZIA + '</footer>';
@@ -709,14 +702,12 @@ function publish() {
     setTimeout(function () { if (b.isConnected) { delete b.dataset.sure; b.className = 'block'; b.textContent = 'Zverejniť platbu'; } }, 6000);
     return;
   }
-  b.disabled = true; b.textContent = 'Zverejňujem a posielam maily…';
-  api('apiAdminZverejnit', S.pin, S.mesiac, suma, $('z-n').checked).then(function (r) {
-    adminView(r.data, '<div class="msg ok">Zverejnené: ' + eur(r.podiel) + ' × ' + r.pocet + ' členov.' +
-      ($('z-n') ? '' : '') + (r.poslane ? ' E-maily odoslané: ' + r.poslane + '.' : '') +
-      (r.chyby.length ? '<br>Neodoslané: ' + esc(r.chyby.join(', ')) : '') + '</div>');
+  b.disabled = true; b.textContent = 'Zverejňujem…';
+  api('apiAdminZverejnit', S.pin, S.mesiac, suma).then(function (r) {
+    adminView(r.data, '<div class="msg ok">Zverejnené: ' + eur(r.podiel) + ' × ' + r.pocet + ' členov. Platba sa im zobrazí, keď si otvoria aplikáciu.</div>');
   }).catch(function (e) { b.disabled = false; alertBox(e); });
 }
-var SETTINGS_KEYS = ['SPRAVCA_MENO','SPRAVCA_EMAIL','SPRAVCA_PODPIS','IBAN','PRIJEMCA','KAVA_KG','KAVA_CENA_KG','KAVA_DOPRAVA','MLIEKO_LITRE','MLIEKO_CENA_L','MLIEKO_KDE','DEN_OBJEDNAVKY','DEN_PRIPOMIENKY','DEN_VYUCTOVANIA'];
+var SETTINGS_KEYS = ['SPRAVCA_MENO','SPRAVCA_EMAIL','SPRAVCA_PODPIS','IBAN','PRIJEMCA','KAVA_KG','KAVA_CENA_KG','KAVA_DOPRAVA','MLIEKO_LITRE','MLIEKO_CENA_L','MLIEKO_KDE','DEN_OBJEDNAVKY','DEN_VYUCTOVANIA'];
 function saveSettings() {
   var b = $('s-btn'), data = {};
   SETTINGS_KEYS.forEach(function (k) { if ($('s-' + k)) data[k] = $('s-' + k).value; });
@@ -740,13 +731,6 @@ function mailModal(title, info, m) {
     '<button class="ghost block" onclick="copyText(S.mail.text,this)">Kopírovať text</button>' +
     '<button class="link" style="width:100%" onclick="modal(\'\')">Zavrieť</button></div>');
 }
-function testMail(b) {
-  b.disabled = true; b.textContent = 'Posielam…';
-  api('apiAdminTestMail', S.pin).then(function (r) {
-    b.disabled = false; b.textContent = 'Skúšobný mail';
-    modal('<h2>Mail odoslaný ✓</h2><p class="tip">' + esc(r) + '</p><button class="block" onclick="modal(\'\')">OK</button>');
-  }).catch(function (e) { b.disabled = false; b.textContent = 'Skúšobný mail'; alertBox(e); });
-}
 function setCoffee(b) {
   b.disabled = true; b.textContent = 'Načítavam…';
   api('apiAdminNastavKavu', S.pin, $('k-url').value, S.mesiac).then(function (r) {
@@ -766,11 +750,12 @@ function reminderMail(b) {
     mailModal('Pripomienka dlžníkom', 'Dlžníci: ' + esc(r.dlznici.join(', ')), r.mail);
   }).catch(function (e) { b.disabled = false; alertBox(e); });
 }
-function invite() {
-  var b = $('p-btn'); b.disabled = true; b.textContent = 'Posielam…';
-  api('apiAdminPozvat', S.pin, $('p-em').value, S.mesiac).then(function (r) {
-    adminView(r.data, '<div class="msg ok">Pozvánky odoslané: ' + r.poslane + '.' + (r.preskocene.length ? ' Preskočené: ' + esc(r.preskocene.join(', ')) : '') + '</div>');
-  }).catch(function (e) { b.disabled = false; b.textContent = 'Poslať pozvánky'; alertBox(e); });
+function invite(b) {
+  b.disabled = true;
+  api('apiAdminPozvanka', S.pin).then(function (r) {
+    b.disabled = false;
+    copyText(r.predmet + '\n\n' + r.text, b);
+  }).catch(function (e) { b.disabled = false; alertBox(e); });
 }
 function openThread(meno) {
   S.vlakno = meno;
