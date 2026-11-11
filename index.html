@@ -157,9 +157,9 @@
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-var APP_VERZIA = '3.9';
+var APP_VERZIA = '4.1';
 var API_URL = String(window.KAVOVY_FOND_API_URL || '').trim(); // nastavuje sa v súbore config.js
-var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin') }; })();
+var INIT = (function () { var q = new URLSearchParams(location.search); return { token: (q.get('t') || '').replace(/[^A-Za-z0-9]/g, ''), admin: q.has('admin'), salka: q.has('salka') }; })();
 var S = { token: '', clen: null, pin: '', admin: null, mesiac: '' };
 
 // ---------- helpers ----------
@@ -202,8 +202,14 @@ function modal(html) { $('modal').innerHTML = html ? '<div class="modal-bg" oncl
 var ART = 0;
 /** Logo: abstraktná značka (modrý kruh, koralový bod, vlnovka). */
 function mark() {
-  return '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="17" cy="21" r="14" fill="#003fa5"/><circle cx="30" cy="10" r="6" fill="#ef7b63"/>' +
-    '<path d="M6 30 C12 18 19 30 25 22 S33 12 36 18" fill="none" stroke="#f5f8f6" stroke-width="3.2" stroke-linecap="round"/></svg>';
+  return '<svg viewBox="0 0 40 40" aria-hidden="true">' +
+    '<path d="M14 11 C12 8.5 16 7 14 4" fill="none" stroke="#ef7b63" stroke-width="2.6" stroke-linecap="round"/>' +
+    '<path d="M21 11 C19 8.5 23 7 21 4" fill="none" stroke="#ef7b63" stroke-width="2.6" stroke-linecap="round"/>' +
+    '<path d="M6 14 H29 V21 A11.5 11.5 0 0 1 17.5 32.5 A11.5 11.5 0 0 1 6 21 Z" style="fill:var(--brand)"/>' +
+    '<path d="M29 16.5 H31 A4.5 4.5 0 0 1 31 25.5 H28" fill="none" style="stroke:var(--brand)" stroke-width="3" stroke-linecap="round"/>' +
+    '<rect x="3" y="34" width="29" height="3" rx="1.5" style="fill:var(--fg)"/>' +
+    '<g transform="rotate(-25 17.5 22)"><ellipse cx="17.5" cy="22" rx="3.6" ry="5.2" fill="#f5f8f6"/>' +
+    '<path d="M17.5 17.3 C16 20 19 24 17.5 26.7" fill="none" style="stroke:var(--brand)" stroke-width="1.3" stroke-linecap="round"/></g></svg>';
 }
 /** Abstraktná koláž – zrnitá koralová guľa, navy plocha, modrá vlnovka, kávové zrno, bodky. Variant mení rozloženie. */
 function art(v) {
@@ -318,6 +324,7 @@ function osobnaAdresa(token) {
   } catch (e) {}
 }
 (function start() {
+  if (INIT.salka) return salkaView();
   if (INIT.admin) { S.pin = sload('kf_pin'); return S.pin ? adminLoad() : adminLogin(); }
   var odhlasene = load('kf_odhlasene') || [];
   // odkaz z ikony na ploche s kľúčom, z ktorého sa člen na tomto zariadení odhlásil → neprihlasovať automaticky
@@ -401,13 +408,8 @@ function memberView(msg) {
   }
   // káva
   if (c.aktivny) h += coffeeCard(c.kava);
-  // história
-  if (c.historia.length) {
-    h += '<div class="card"><h2>Mesiace</h2><ul class="list">' + c.historia.slice(0, 12).map(function (m) {
-      var p = m.stav === 'ok' ? '<span class="pill ok">zaplatené</span>' : (m.stav === 'ciastocne' ? '<span class="pill warn">chýba ' + eur(m.chyba) + '</span>' : '<span class="pill bad">nezaplatené</span>');
-      return '<li><span class="grow">' + esc(m.nazov) + '</span><span class="num muted">' + eur(m.predpis) + '</span>' + p + '</li>';
-    }).join('') + '</ul></div>';
-  }
+  // moje mesiace
+  if (c.mesiace && c.mesiace.length) h += mesiaceCard(c);
   if (c.platby.length) {
     h += '<div class="card"><h2>Moje platby</h2><ul class="list">' + c.platby.map(function (p) {
       return '<li><span class="grow">' + esc(p.datum) + '<div class="sub">' + esc(p.poznamka || p.typ) + '</div></span><span class="num">' + eur(p.suma) + '</span></li>';
@@ -455,6 +457,86 @@ function sendMsg() {
     setTimeout(function () { var e = $('spravy'); if (e) e.scrollIntoView(); }, 50);
   }).catch(function (e) { b.disabled = false; b.textContent = 'Odoslať správu'; alertBox(e); });
 }
+// --- mesiace člena: stav, vynechanie ---
+function mesiacStav(m) {
+  if (m.typ === 'zaplatene') return '<span class="pill ok">zaplatené ' + eur(m.suma) + '</span>';
+  if (m.typ === 'ciastocne') return '<span class="pill warn">chýba ' + eur(m.chyba) + '</span>';
+  if (m.typ === 'nezaplatene') return '<span class="pill bad">nezaplatené ' + eur(m.suma) + '</span>';
+  if (m.typ === 'vynechany') return '<span class="pill mut">⏸ vynechaný' + (m.zadal === 'správca' ? ' (správca)' : '') + '</span>';
+  if (m.typ === 'caka') return '<span class="pill mut">pijem · čaká na vyúčtovanie</span>';
+  if (m.typ === 'buduci') return '<span class="pill mut">pijem</span>';
+  return '<span class="sub">neúčtované</span>';
+}
+function mesiaceCard(c) {
+  var teraz = monthKey(new Date());
+  var bud = c.mesiace.filter(function (m) { return m.mesiac >= teraz; }).reverse();
+  var h = '<div class="card" id="mesiace"><h2>Moje mesiace</h2>' +
+    '<p class="tip" style="margin:0 0 6px">Nepiješ niektorý mesiac kávu (dovolenka, stáž…)? Vynechaj ho – za ten mesiac neplatíš. Dá sa to, kým správca nezverejní platbu.</p>' +
+    '<ul class="list">' + bud.map(function (m, i) {
+      var btn = m.mozeMenit && c.aktivny
+        ? '<button class="small ' + (m.vynechany ? '' : 'ghost') + '" onclick="skipMonth(\'' + m.mesiac + '\',' + (!m.vynechany) + ',this)">' + (m.vynechany ? 'Vrátiť' : 'Vynechať') + '</button>' : '';
+      return '<li><span class="grow"><b style="color:var(--fg)">' + esc(m.nazov) + '</b>' + (m.mesiac === teraz ? ' <span class="sub">(tento mesiac)</span>' : '') + '<div style="margin-top:4px">' + mesiacStav(m) + '</div></span>' + btn + '</li>';
+    }).join('') + '</ul>' +
+    '<button class="ghost block" style="margin-top:12px" onclick="historyModal()">Celá história</button></div>';
+  return h;
+}
+function historyList(list, adminMeno) {
+  return '<ul class="list">' + list.map(function (m) {
+    var btn = adminMeno && m.mozeMenit
+      ? '<button class="small ghost" onclick="adminSkip(\'' + m.mesiac + '\',' + (!m.vynechany) + ',this)">' + (m.vynechany ? 'Vrátiť' : 'Vynechať') + '</button>' : '';
+    return '<li><span class="grow" style="color:var(--fg)">' + esc(m.nazov) + '</span>' + mesiacStav(m) + btn + '</li>';
+  }).join('') + '</ul>';
+}
+function historyModal() {
+  var c = S.clen;
+  modal('<h2>Moja história</h2><p class="tip" style="margin-top:0">Prihlásený(á) od ' + esc(c.odDatum) + '. Zostatok: <b style="color:' + (c.zostatok < -0.004 ? 'var(--bad)' : 'var(--fg)') + '">' + (c.zostatok > 0 ? '+' : '') + eur(c.zostatok) + '</b></p>' +
+    '<div style="max-height:56vh;overflow-y:auto">' + historyList(c.mesiace) + '</div>' +
+    '<button class="block" style="margin-top:14px" onclick="modal(\'\')">Zavrieť</button>');
+}
+function skipMonth(mesiac, vynechat, b) {
+  b.disabled = true;
+  api('apiVynechat', S.token, mesiac, vynechat).then(function (c) {
+    S.clen = c; memberView('<div class="msg ok">' + (vynechat ? 'Mesiac je vynechaný – za ten mesiac neplatíš.' : 'Mesiac je vrátený – tento mesiac piješ s nami.') + '</div>');
+    setTimeout(function () { var e = $('mesiace'); if (e) e.scrollIntoView(); }, 50);
+  }).catch(function (e) { b.disabled = false; alertBox(e); });
+}
+
+// --- jednorazová platba za šálku (?salka) ---
+function paymeUrl(iban, suma, sprava, prijemca) {
+  return 'https://payme.sk/?V=1&IBAN=' + encodeURIComponent(iban) + '&AM=' + suma.toFixed(2) + '&CC=EUR&DT=&PI=&MSG=' +
+    encodeURIComponent(sprava).replace(/%20/g, '+') + '&CN=' + encodeURIComponent(prijemca || '').replace(/%20/g, '+');
+}
+function salkaView() {
+  spinner();
+  api('apiVerejne').then(function (d) { S.verejne = d; S.salky = 1; salkaRender(); })
+    .catch(function (e) { render(header('') + errBox(e) + '<button class="ghost block" onclick="salkaView()">Skúsiť znova</button>'); });
+}
+function salkaRender() {
+  var d = S.verejne, n = S.salky, suma = Math.round(d.cena * n * 100) / 100;
+  var link = paymeUrl(d.iban, suma, 'Kava ' + n + 'x salka', d.prijemca);
+  var iban = d.iban.replace(/(.{4})/g, '$1 ').trim();
+  render(header('', 'Ústav molekulárnej biomedicíny LF UK') +
+    '<div class="card hero"><div class="art">' + art('pay') + '</div>' +
+    '<span class="pill mut">Jednorazová platba · one-time payment</span>' +
+    '<h2 style="margin:12px 0 0;font-size:20px">Šálka kávy · Cup of coffee</h2>' +
+    '<div class="amount">' + eur(suma) + '</div>' +
+    '<div class="sub" style="margin-bottom:16px">' + eur(d.cena) + ' za šálku / per cup</div>' +
+    '<div class="row" style="justify-content:center;margin-bottom:18px">' +
+      '<button class="ghost" style="width:52px;padding:0" aria-label="Menej šálok" onclick="salkaZmen(-1)">−</button>' +
+      '<b style="min-width:110px;font-size:18px;color:var(--fg)">' + n + ' ' + (n === 1 ? 'šálka' : (n < 5 ? 'šálky' : 'šálok')) + '</b>' +
+      '<button class="ghost" style="width:52px;padding:0" aria-label="Viac šálok" onclick="salkaZmen(1)">+</button></div>' +
+    '<a class="btn block" href="' + esc(link) + '" target="_blank" rel="noopener">Zaplatiť cez PayMe · Pay</a>' +
+    '<div id="qr"></div>' +
+    '<div style="text-align:left;margin-top:14px">' + kv('IBAN', iban, d.iban) + kv('Suma', eur(suma), suma.toFixed(2)) + kv('Príjemca', d.prijemca, d.prijemca) + '</div>' +
+    '</div>' +
+    '<div class="card stack"><h2>Piješ kávu pravidelne?</h2>' +
+    '<p class="tip" style="margin:0">Pridaj sa do kávového fondu – raz mesačne zaplatíš podiel a piješ, koľko chceš. / Drink coffee often? Join the coffee fund.</p>' +
+    '<a class="btn ghost block" href="' + esc(d.web) + '">Pridať sa do fondu</a></div>' +
+    '<footer>Kávový fond IMBM · ' + esc(d.spravca) + '</footer>');
+  if (window.QRCode && $('qr')) { try { new QRCode($('qr'), { text: link, width: 132, height: 132, correctLevel: QRCode.CorrectLevel.M }); $('qr').classList.add('on'); } catch (e) {} }
+}
+function salkaZmen(k) { S.salky = Math.max(1, Math.min(20, S.salky + k)); salkaRender(); }
+
 // --- odhlásenie z účtu na tomto zariadení (členstvo vo fonde ostáva) ---
 function askLogout() {
   modal('<h2>Odhlásiť sa z účtu?</h2>' +
@@ -634,9 +716,9 @@ function adminView(d, msg) {
   // --- Členovia ---
   h += '<div class="card"><h2>Členovia (' + aktivni.length + ' prihlásených)</h2><div class="tablewrap"><table><tr><th>Meno</th><th>' + esc(d.nazovMesiaca) + '</th><th>Zostatok</th><th>Posledná platba</th><th></th></tr>' +
     d.clenovia.map(function (c, i) {
-      var st = c.mesiacStav === 'ok' ? '<span class="pill ok">✓</span>' : (c.mesiacStav === 'nie' ? '<span class="pill bad">✗</span>' : (c.mesiacStav === 'ciastocne' ? '<span class="pill warn">čiast.</span>' : '<span class="muted">–</span>'));
+      var st = c.vynechany ? '<span class="pill mut">⏸</span>' : c.mesiacStav === 'ok' ? '<span class="pill ok">✓</span>' : (c.mesiacStav === 'nie' ? '<span class="pill bad">✗</span>' : (c.mesiacStav === 'ciastocne' ? '<span class="pill warn">čiast.</span>' : '<span class="muted">–</span>'));
       var z = c.zostatok;
-      return '<tr' + (c.aktivny ? '' : ' style="opacity:.55"') + '><td>' + esc(c.meno) + '<div class="sub">' + esc(c.email) + (c.aktivny ? '' : ' · odhlásený ' + esc(c.odhlaseny)) + '</div></td>' +
+      return '<tr' + (c.aktivny ? '' : ' style="opacity:.55"') + '><td><button class="link" style="font-weight:600;color:var(--fg);text-decoration:none;text-align:left" onclick="openMember(' + i + ')">' + esc(c.meno) + ' ›</button><div class="sub">' + esc(c.email) + (c.aktivny ? '' : ' · odhlásený ' + esc(c.odhlaseny)) + '</div></td>' +
         '<td>' + st + '</td><td class="num" style="color:' + (z < -0.004 ? 'var(--bad)' : (z > 0.004 ? 'var(--ok)' : 'inherit')) + '">' + (z > 0 ? '+' : '') + eur(z) + '</td>' +
         '<td class="sub">' + esc(c.posledna) + '</td>' +
         '<td style="white-space:nowrap"><button class="small ghost" onclick="manualPay(' + i + ')">+ platba</button> ' +
@@ -700,6 +782,7 @@ function adminView(d, msg) {
       f('KAVA_DOPRAVA', 'Doprava kávy €', { num: true }) +
       f('MLIEKO_LITRE', 'Mlieko – litre mesačne', { num: true }) + f('MLIEKO_CENA_L', 'Cena mlieka za liter €', { num: true }) +
       f('MLIEKO_KDE', 'Kde sa objednáva mlieko', { wide: true, ph: 'napr. odkaz na e-shop' }) +
+      f('CENA_SALKA', 'Cena jednej šálky € (pre ľudí mimo fondu)', { num: true }) +
       '<h3>Kalendár (deň v mesiaci)</h3>' +
       f('DEN_OBJEDNAVKY', 'Objednávka', { num: true }) +
       f('DEN_VYUCTOVANIA', 'Pripomenúť zverejnenie platby od', { num: true }) +
@@ -710,7 +793,8 @@ function adminView(d, msg) {
   h += '<div class="grid2"><div class="card stack"><h2>Pozvať do fondu</h2>' +
     '<p class="tip" style="margin:0">Aplikácia neposiela žiadne maily. Skopírujte text pozvánky (aj s odkazom na prihlásenie) a pošlite ho sami – do mailing listu, skupiny alebo správou. Kto sa prihlási, objaví sa v zozname členov.</p>' +
     '<button class="block" id="p-btn" onclick="invite(this)">Kopírovať text pozvánky</button>' +
-    '<button class="ghost block" onclick="copyText(S.admin.appUrl,this)">Kopírovať len odkaz na prihlásenie</button></div>';
+    '<button class="ghost block" onclick="copyText(S.admin.appUrl,this)">Kopírovať len odkaz na prihlásenie</button>' +
+    '<button class="ghost block" onclick="copyText(S.admin.appUrl + \'?salka\',this)">Kopírovať odkaz na platbu za šálku</button></div>';
   h += '<div class="card stack"><h2>Odkazy</h2>' +
     '<div class="kv"><span class="k">Prihlásenie</span><span class="v">' + esc(d.appUrl) + '</span><button class="copy" onclick="copyText(S.admin.appUrl,this)">Kopírovať</button></div>' +
     '<div class="tip">Tento odkaz môžete poslať aj do skupiny – každý sa prihlási sám.</div>' +
@@ -733,7 +817,7 @@ function publish() {
     adminView(r.data, '<div class="msg ok">Zverejnené: ' + eur(r.podiel) + ' × ' + r.pocet + ' členov. Platba sa im zobrazí, keď si otvoria aplikáciu.</div>');
   }).catch(function (e) { b.disabled = false; alertBox(e); });
 }
-var SETTINGS_KEYS = ['SPRAVCA_MENO','SPRAVCA_EMAIL','SPRAVCA_PODPIS','IBAN','PRIJEMCA','KAVA_KG','KAVA_CENA_KG','KAVA_DOPRAVA','MLIEKO_LITRE','MLIEKO_CENA_L','MLIEKO_KDE','DEN_OBJEDNAVKY','DEN_VYUCTOVANIA'];
+var SETTINGS_KEYS = ['SPRAVCA_MENO','SPRAVCA_EMAIL','SPRAVCA_PODPIS','IBAN','PRIJEMCA','KAVA_KG','KAVA_CENA_KG','KAVA_DOPRAVA','MLIEKO_LITRE','MLIEKO_CENA_L','MLIEKO_KDE','CENA_SALKA','DEN_OBJEDNAVKY','DEN_VYUCTOVANIA'];
 function saveSettings() {
   var b = $('s-btn'), data = {};
   SETTINGS_KEYS.forEach(function (k) { if ($('s-' + k)) data[k] = $('s-' + k).value; });
@@ -821,6 +905,26 @@ function sendBulk() {
     S.bulk = {}; S.bulkText = ''; modal('');
     adminView(r.data, '<div class="msg ok">Správa odoslaná ' + r.pocet + ' členom. Uvidia ju vo svojej aplikácii.</div>');
   }).catch(function (e) { b.disabled = false; bulkCount(); alertBox(e); });
+}
+// --- detail člena (správca): história a vynechanie mesiacov ---
+function openMember(i) {
+  S.detailMeno = S.admin.clenovia[i].meno;
+  modal('<h2>' + esc(S.detailMeno) + '</h2><div class="spinner" style="margin:30px auto"></div>');
+  api('apiAdminClenDetail', S.pin, S.detailMeno).then(memberDetail).catch(alertBox);
+}
+function memberDetail(d) {
+  modal('<h2>' + esc(d.meno) + '</h2>' +
+    '<p class="tip" style="margin-top:0">' + esc(d.email) + ' · ' + (d.aktivny ? 'prihlásený od ' + esc(d.od) : 'odhlásený') +
+    ' · zostatok <b style="color:' + (d.zostatok < -0.004 ? 'var(--bad)' : 'var(--fg)') + '">' + (d.zostatok > 0 ? '+' : '') + eur(d.zostatok) + '</b></p>' +
+    '<p class="tip">Vynechať môžete ľubovoľný mesiac. Ak je platba za mesiac už zverejnená, členovi sa zruší; podiel ostatných sa zmení, až keď platbu zverejníte znova.</p>' +
+    '<div style="max-height:52vh;overflow-y:auto">' + historyList(d.mesiace, d.meno) + '</div>' +
+    '<button class="block" style="margin-top:14px" onclick="modal(\'\');adminLoad()">Zavrieť</button>');
+}
+function adminSkip(mesiac, vynechat, b) {
+  b.disabled = true;
+  api('apiAdminVynechat', S.pin, S.detailMeno, mesiac, vynechat, S.mesiac).then(function (r) {
+    S.admin = r.data; memberDetail(r.detail);
+  }).catch(function (e) { b.disabled = false; alertBox(e); });
 }
 function openThread(meno) {
   S.vlakno = meno;
